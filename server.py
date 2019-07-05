@@ -1,4 +1,29 @@
+"""
+I hope you enjoy this incredibly overengineered text adventure.
+Watch out for the grue.
+"""
+
 import socket
+import random
+
+class Room(object):
+    def __init__(
+        self, 
+        room_id, 
+        desc, 
+        north = 100,
+        east = 100,
+        west = 100,
+        south = 100
+        ):
+        self.room_id = room_id
+        self.desc = desc
+        self.move = {
+            'north': north,
+            'south': south,
+            'east': east,
+            'west': west
+            }
 
 
 class Server(object):
@@ -43,7 +68,7 @@ class Server(object):
     each room have a unique description.
     """
 
-    game_name = "Realms of Venture"
+    game_name = "Zork"
 
     def __init__(self, port=50000):
         self.input_buffer = ""
@@ -54,6 +79,36 @@ class Server(object):
         self.port = port
 
         self.room = 0
+        self.grue = 0
+        self.room_dict = {}
+        self.room_dict[0] = Room(
+            0,
+            ('You are standing in an open field west of a white '
+            'house, with a boarded front door. There is a small '
+            'mailbox here.'),
+            north=3,
+            east=2,
+            west=1
+        )
+        self.room_dict[1] = Room(
+            1,
+            ('This is a forest, with trees in all directions. To '
+            'the east, there appears to be sunlight.'),
+            east=0
+        )
+        self.room_dict[2] = Room(
+            2,
+            ('You are facing the east side of a white house. There '
+            'is no door here, and all the windows are boarded.'),
+            west=0
+        )
+        self.room_dict[3] = Room(
+            3,
+            ('You are facing the north side of a white house. There '
+            'is no door here, and all the windows are boarded up. To '
+            'the north a narrow path winds through the trees.'),
+            south=0
+        )
 
     def connect(self):
         self.socket = socket.socket(
@@ -79,9 +134,7 @@ class Server(object):
         :return: str
         """
 
-        # TODO: YOUR CODE HERE
-
-        pass
+        return self.room_dict[room_number].desc
 
     def greet(self):
         """
@@ -108,9 +161,11 @@ class Server(object):
         :return: None 
         """
 
-        # TODO: YOUR CODE HERE
-
-        pass
+        received = b''
+        while b'\n' not in received:
+            received += self.client_connection.recv(16)
+        
+        self.input_buffer = received.decode().rstrip().lower()
 
     def move(self, argument):
         """
@@ -132,10 +187,18 @@ class Server(object):
         :param argument: str
         :return: None
         """
+        if argument not in ['north', 'south', 'east', 'west']:
+            self.output_buffer = ('Please select a direction: north, '
+                'south, east, or west.')
+        else:
+            current_room = self.room_dict[self.room]
+            if current_room.move[argument] != 100:
+                new_room = self.room_dict[current_room.move[argument]]
+                self.room = new_room.room_id
+                self.output_buffer = self.room_description(self.room)
+            else:
+                self.output_buffer= "You can't go that way."
 
-        # TODO: YOUR CODE HERE
-
-        pass
 
     def say(self, argument):
         """
@@ -151,9 +214,7 @@ class Server(object):
         :return: None
         """
 
-        # TODO: YOUR CODE HERE
-
-        pass
+        self.output_buffer = 'You say, "{}"\nBut no one answers.'.format(argument)
 
     def quit(self, argument):
         """
@@ -167,9 +228,8 @@ class Server(object):
         :return: None
         """
 
-        # TODO: YOUR CODE HERE
-
-        pass
+        self.done = True
+        self.output_buffer = "Goodbye!"
 
     def route(self):
         """
@@ -183,9 +243,16 @@ class Server(object):
         :return: None
         """
 
-        # TODO: YOUR CODE HERE
+        received = self.input_buffer.split(" ")
 
-        pass
+        command = received.pop(0)
+        arguments = " ".join(received)
+
+        {
+            'quit': self.quit,
+            'move': self.move,
+            'say': self.say,
+        }[command](arguments)
 
     def push_output(self):
         """
@@ -196,10 +263,23 @@ class Server(object):
         
         :return: None 
         """
-
-        # TODO: YOUR CODE HERE
-
-        pass
+        if self.grue == 10:
+            self.client_connection.sendall(
+                b"OK! " + self.output_buffer.encode() + b"\n" +
+                b"It is getting very dark. You are likely to be eaten by a grue.\n"
+                )
+            self.grue = 100
+        elif self.grue == 100:
+            self.client_connection.sendall(
+                b"You have been eaten by a grue.\nYou have died.\n\nTHE END\n"
+                )
+            self.push_output()
+            self.quit()
+        else:
+            self.grue = random.randint(1,11)
+            self.client_connection.sendall(
+                b"OK! " + self.output_buffer.encode() + b"\n"
+            )
 
     def serve(self):
         self.connect()
